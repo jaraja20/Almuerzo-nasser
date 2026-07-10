@@ -1,0 +1,7 @@
+{
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/" }
+  ],
+  "installCommand": "yarn install --frozen-lockfile || npm install --legacy-peer-deps",
+  "buildCommand": "yarn build || npm run build"
+}

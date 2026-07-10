@@ -1,0 +1,35 @@
+{
+  "summary": "First-iteration end-to-end testing of Nasser Cubiertas weekly-menu system. Backend (22/22 pytest tests) and frontend (14/14 Playwright checks) all passed. Covered auth (recepcion/rec73491654), Mara Excel upload/parse, Sabrositos text parse, manual menu CRUD, upsert of selections (case-insensitive), XLSX export with token query-param, reset, and full collaborator flow (name validation, provider pick, per-day radio selection, submit).",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "OrderForm.jsx line 84-85: `userName` uses `localStorage.getItem() || (typeof window !== 'undefined' && '')` — the fallback expression evaluates to `false` (boolean) when localStorage is empty in SSR. Not currently harmful because effect redirects to '/', but cleaner to fallback to empty string ''.",
+    "server.py: DELETE /selections/reset uses HTTP DELETE with a query param for provider — works but is subtly non-idempotent from a REST perspective; consider validating provider against {mara,sabrositos} to avoid accidental full wipe when provider param is omitted.",
+    "server.py parse_mara_excel is heuristic (string prefix matching for ENS/PAN/MANDIOCA to detect sides). Works for the sample file but brittle if Mara changes column layout. Consider adding regression fixtures.",
+    "MenuEditor.normalize is declared as a const inside the component but is used inside the useEffect that runs on mount — because it's re-created every render this is fine but eslint-disable-next-line masks the dependency; safe to leave.",
+    "Admin token is stored in localStorage — acceptable for this internal tool but token has no expiration. Consider adding server-side session/JWT with exp for production hardening.",
+    "AdminOrders.download builds URL with token in query string and opens in new window: token is exposed in server access logs/history. For internal use this is OK; document risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py (new)"
+  ],
+  "success_rate": {"backend": "100% (22/22)", "frontend": "100% (14/14 UI checks)"},
+  "test_credentials": "Admin: recepcion / rec73491654 (also written in /app/backend/.env). No end-user auth for collaborators — they use name+surname only.",
+  "seed_data_creation": "Tests create TEST_-prefixed selections and use test menus with week 2026-01-05 and 2026-02-02. Cleanup fixture resets both provider selections before and after the suite. UI flow additionally left a 'Juan Perez' collaborator selection which the subsequent reset step deleted.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend endpoints verified: /api/admin/login, /api/menus (GET/POST/PUT/DELETE), /api/menus/active, /api/menus/parse-excel (using /tmp/mara.xlsx), /api/menus/parse-text, /api/selections (POST/GET with auth, upsert by user_name_lc+menu_id), /api/selections/export?provider=&token=&menu_id= (returns real xlsx starting with PK zip signature and Content-Disposition attachment), /api/selections/reset. Frontend flow: Home name validation requires >=2 space-separated words, redirects to /order, provider tabs work, day toggle, radios with data-testids (bf/main/diet/side)-{day}-{index}, submit shows 'Pedido guardado' toast, admin table shows the order, reset works via confirm dialog. Excel upload UI hydrates all days including breakfast list. Nothing to retest.",
+  "rca of the issue": "N/A — no bugs found."
+}

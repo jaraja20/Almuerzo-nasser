@@ -1,0 +1,21 @@
+.App {
+  font-family: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    sans-serif;
+}
+
+.brand-red {
+  color: #dc2626;
+}
+.bg-brand-red {
+  background-color: #dc2626;
+}
+.bg-brand-red:hover {
+  background-color: #b91c1c;
+}
+
+#emergent-badge {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
