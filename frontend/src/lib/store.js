@@ -481,11 +481,11 @@ export function exportSelectionsToExcel({ provider, menu, selections }) {
         if (cat.key === "main") {
           const mainChoice = (c.main || "").trim();
           const dietChoice = (c.diet || "").trim();
+          const mainExtra = (c.mainExtra || "").trim();
           const dietExtra = (c.dietExtra || "").trim();
           if (mainChoice) {
-            val = mainChoice;
+            val = mainExtra ? `${mainChoice} con ${mainExtra}` : mainChoice;
           } else if (dietChoice) {
-            // Menú opcional -> concatenar el acompañamiento escrito si existe
             val = dietExtra ? `${dietChoice} con ${dietExtra}` : dietChoice;
           }
         } else if (cat.key === "breakfast") {
@@ -493,16 +493,9 @@ export function exportSelectionsToExcel({ provider, menu, selections }) {
           const bfExtra = (c.breakfastExtra || "").trim();
           val = bf && bfExtra ? `${bf} con ${bfExtra}` : bf;
         } else if (cat.key === "side") {
-          val = (c.side || "").trim();
-        }
-        row.push(val);
-      }
-    }
-    aoa.push(row);
-  }
-
-  const ws = XLSX.utils.aoa_to_sheet(aoa);
-  ws["!merges"] = merges;
+          const sideChoice = (c.side || "").trim();
+          const sideExtra = (c.sideExtra || "").trim();
+          val = sideChoice && sideExtra ? `${sideChoice} (${sideExtra})` : sideChoice;
   ws["!cols"] = colWidths;
   ws["!rows"] = aoa.map((_, i) => ({ hpt: i < 2 ? 24 : 30 }));
 

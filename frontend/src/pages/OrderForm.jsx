@@ -171,23 +171,31 @@ export default function OrderForm() {
       c[field] = value;
       if (field === "main" && value) {
         c.diet = "";
-        c.dietExtra = "";
       }
       if (field === "diet") {
         c.main = "";
-        if (!value || !/^grille/i.test(value)) c.dietExtra = "";
       }
-      if (field === "breakfast") {
-        if (!value || !/sandwich de verduras/i.test(value)) c.breakfastExtra = "";
+      if ((field === "main" || field === "diet") && !value) {
+        c.mainExtra = "";
+      }
+      if (field === "breakfast" && !value) {
+        c.breakfastExtra = "";
+      }
+      if (field === "side") {
+        const selectedSides = Array.isArray(value) ? value : String(value).split(", ").filter(Boolean);
+        if (!selectedSides.length) {
+          c.sideExtra = "";
+        }
+        c.side = Array.isArray(value) ? value.join(", ") : value;
       }
       return { ...prev, [dayKey]: c };
     });
   };
 
-  const setDietExtra = (dayKey, text) => {
+  const setMainExtra = (dayKey, text) => {
     setChoices((prev) => ({
       ...prev,
-      [dayKey]: { ...(prev[dayKey] || {}), dietExtra: text },
+      [dayKey]: { ...(prev[dayKey] || {}), mainExtra: text },
     }));
   };
 
@@ -195,6 +203,13 @@ export default function OrderForm() {
     setChoices((prev) => ({
       ...prev,
       [dayKey]: { ...(prev[dayKey] || {}), breakfastExtra: text },
+    }));
+  };
+
+  const setSideExtra = (dayKey, text) => {
+    setChoices((prev) => ({
+      ...prev,
+      [dayKey]: { ...(prev[dayKey] || {}), sideExtra: text },
     }));
   };
 
@@ -343,7 +358,7 @@ export default function OrderForm() {
                         name={`bf-${currentDay.day}`}
                         testid={`bf-${currentDay.day}`}
                       />
-                      {!isMara && (
+                      {choices[currentDay.day]?.breakfast ? (
                         <div className="pl-2 -mt-2">
                           <label className="text-xs font-semibold text-neutral-600 block mb-1">
                             Especificá de manera opcional
@@ -363,7 +378,7 @@ export default function OrderForm() {
                             maxLength={80}
                           />
                         </div>
-                      )}
+                      ) : null}
                       <ChoiceGroup
                         title={labels.main}
                         options={currentDay.main}
@@ -380,27 +395,27 @@ export default function OrderForm() {
                         name={`diet-${currentDay.day}`}
                         testid={`diet-${currentDay.day}`}
                       />
-                      {!isMara && /^grille/i.test(choices[currentDay.day]?.diet || "") && (
+                      {(choices[currentDay.day]?.main || choices[currentDay.day]?.diet) ? (
                         <div className="pl-2 -mt-2">
                           <label className="text-xs font-semibold text-neutral-600 block mb-1">
-                            Especificá acompañamiento
+                            Especificá de manera opcional
                             <span className="text-neutral-400 font-normal">
-                              {" "}(ej: arroz y papas fritas)
+                              {" "}(opcional)
                             </span>
                           </label>
                           <input
                             type="text"
-                            value={choices[currentDay.day]?.dietExtra || ""}
+                            value={choices[currentDay.day]?.mainExtra || ""}
                             onChange={(e) =>
-                              setDietExtra(currentDay.day, e.target.value)
+                              setMainExtra(currentDay.day, e.target.value)
                             }
-                            placeholder="Escribí el acompañamiento para el grille"
-                            data-testid={`diet-extra-${currentDay.day}`}
+                            placeholder="Ej: sin cebolla, extra aderezo"
+                            data-testid={`main-extra-${currentDay.day}`}
                             className="w-full text-sm px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400"
                             maxLength={80}
                           />
                         </div>
-                      )}
+                      ) : null}
                       <ChoiceGroup
                         title={labels.side}
                         options={currentDay.sides}
@@ -416,6 +431,27 @@ export default function OrderForm() {
                         testid={`side-${currentDay.day}`}
                         multiple
                       />
+                      {(choices[currentDay.day]?.side || "").split(", ").filter(Boolean).length ? (
+                        <div className="pl-2 -mt-2">
+                          <label className="text-xs font-semibold text-neutral-600 block mb-1">
+                            Especificá de manera opcional
+                            <span className="text-neutral-400 font-normal">
+                              {" "}(opcional)
+                            </span>
+                          </label>
+                          <input
+                            type="text"
+                            value={choices[currentDay.day]?.sideExtra || ""}
+                            onChange={(e) =>
+                              setSideExtra(currentDay.day, e.target.value)
+                            }
+                            placeholder="Ej: sin picante, con limón"
+                            data-testid={`side-extra-${currentDay.day}`}
+                            className="w-full text-sm px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400"
+                            maxLength={80}
+                          />
+                        </div>
+                      ) : null}
                     </>
                   );
                 })()}
