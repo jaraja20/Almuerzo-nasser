@@ -496,6 +496,15 @@ export function exportSelectionsToExcel({ provider, menu, selections }) {
           const sideChoice = (c.side || "").trim();
           const sideExtra = (c.sideExtra || "").trim();
           val = sideChoice && sideExtra ? `${sideChoice} (${sideExtra})` : sideChoice;
+        }
+        row.push(val);
+      }
+    }
+    aoa.push(row);
+  }
+
+  const ws = XLSX.utils.aoa_to_sheet(aoa);
+  ws["!merges"] = merges;
   ws["!cols"] = colWidths;
   ws["!rows"] = aoa.map((_, i) => ({ hpt: i < 2 ? 24 : 30 }));
 
