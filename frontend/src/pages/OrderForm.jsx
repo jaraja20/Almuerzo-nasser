@@ -171,12 +171,15 @@ export default function OrderForm() {
       c[field] = value;
       if (field === "main" && value) {
         c.diet = "";
+        c.dietExtra = "";
       }
-      if (field === "diet") {
+      if (field === "diet" && value) {
         c.main = "";
+        c.mainExtra = "";
       }
       if ((field === "main" || field === "diet") && !value) {
         c.mainExtra = "";
+        c.dietExtra = "";
       }
       if (field === "breakfast" && !value) {
         c.breakfastExtra = "";
@@ -196,6 +199,13 @@ export default function OrderForm() {
     setChoices((prev) => ({
       ...prev,
       [dayKey]: { ...(prev[dayKey] || {}), mainExtra: text },
+    }));
+  };
+
+  const setDietExtra = (dayKey, text) => {
+    setChoices((prev) => ({
+      ...prev,
+      [dayKey]: { ...(prev[dayKey] || {}), dietExtra: text },
     }));
   };
 
@@ -395,7 +405,7 @@ export default function OrderForm() {
                         name={`diet-${currentDay.day}`}
                         testid={`diet-${currentDay.day}`}
                       />
-                      {(choices[currentDay.day]?.main || choices[currentDay.day]?.diet) ? (
+                      {choices[currentDay.day]?.main ? (
                         <div className="pl-2 -mt-2">
                           <label className="text-xs font-semibold text-neutral-600 block mb-1">
                             Especificá de manera opcional
@@ -411,6 +421,26 @@ export default function OrderForm() {
                             }
                             placeholder="Ej: sin cebolla, extra aderezo"
                             data-testid={`main-extra-${currentDay.day}`}
+                            className="w-full text-sm px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400"
+                            maxLength={80}
+                          />
+                        </div>
+                      ) : choices[currentDay.day]?.diet ? (
+                        <div className="pl-2 -mt-2">
+                          <label className="text-xs font-semibold text-neutral-600 block mb-1">
+                            Especificá de manera opcional
+                            <span className="text-neutral-400 font-normal">
+                              {" "}(opcional)
+                            </span>
+                          </label>
+                          <input
+                            type="text"
+                            value={choices[currentDay.day]?.dietExtra || ""}
+                            onChange={(e) =>
+                              setDietExtra(currentDay.day, e.target.value)
+                            }
+                            placeholder="Ej: sin cebolla, extra aderezo"
+                            data-testid={`diet-extra-${currentDay.day}`}
                             className="w-full text-sm px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400"
                             maxLength={80}
                           />

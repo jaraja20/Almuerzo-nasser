@@ -395,15 +395,26 @@ async def export_selections(provider: str, menu_id: Optional[str] = None,
             day_choice = (s.get("choices") or {}).get(d) or {}
             if kind == "breakfast":
                 val = day_choice.get("breakfast") or ""
+                extra = day_choice.get("breakfastExtra") or ""
+                if val and extra:
+                    val = f"{val} con {extra}"
             elif kind == "main":
-                val = day_choice.get("main") or ""
-                # if user picked diet as main, mark
-                if not val and day_choice.get("diet"):
-                    val = f"[Dieta] {day_choice.get('diet')}"
+                main_val = day_choice.get("main") or ""
+                if main_val:
+                    extra = day_choice.get("mainExtra") or ""
+                    val = f"{main_val} con {extra}" if extra else main_val
+                elif day_choice.get("diet"):
+                    diet_val = day_choice.get("diet")
+                    extra = day_choice.get("dietExtra") or ""
+                    val = f"{diet_val} con {extra}" if extra else diet_val
             elif kind == "diet":
-                val = day_choice.get("diet") or ""
+                diet_val = day_choice.get("diet") or ""
+                extra = day_choice.get("dietExtra") or ""
+                val = f"{diet_val} con {extra}" if diet_val and extra else diet_val
             elif kind == "side":
-                val = day_choice.get("side") or ""
+                side_val = day_choice.get("side") or ""
+                extra = day_choice.get("sideExtra") or ""
+                val = f"{side_val} ({extra})" if side_val and extra else side_val
             ws.write(r, cidx, val, cell_fmt)
 
     workbook.close()
