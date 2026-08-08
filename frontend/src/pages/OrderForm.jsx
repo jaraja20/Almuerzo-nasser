@@ -6,7 +6,6 @@ import {
   getMySelection,
   DAY_LABEL,
 } from "@/lib/store";
-import SaborCaseroDayFields from "@/components/SaborCaseroDayFields";
 import { LOGO_URL } from "@/lib/firebase";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -92,7 +91,7 @@ function ChoiceGroup({ title, options, value, onChange, name, testid, multiple }
 export default function OrderForm() {
   const navigate = useNavigate();
   const [provider, setProvider] = useState(null);
-  const [menus, setMenus] = useState({ mara: null, saborcasero: null });
+  const [menus, setMenus] = useState({ mara: null, sabrositos: null });
   const [day, setDay] = useState("lunes");
   const [choices, setChoices] = useState({});
   const [loading, setLoading] = useState(true);
@@ -224,22 +223,6 @@ export default function OrderForm() {
     }));
   };
 
-  // Sabor Casero: al elegir una opción de plato fuerte, la guarnición
-  // disponible cambia por completo (pertenece a esa opción), así que se
-  // reinicia junto con su texto libre.
-  const setSaborCaseroOpcion = (dayKey, plato) => {
-    setChoices((prev) => ({
-      ...prev,
-      [dayKey]: {
-        ...(prev[dayKey] || {}),
-        main: plato,
-        mainExtra: "",
-        side: "",
-        sideExtra: "",
-      },
-    }));
-  };
-
   const submit = async () => {
     if (!activeMenu) return;
     const hasAny = Object.values(choices).some((c) =>
@@ -306,10 +289,10 @@ export default function OrderForm() {
               />
               <ProviderCard
                 icon={<UtensilsCrossed className="w-8 h-8" />}
-                label="Sabor Casero"
-                available={!!menus.saborcasero}
-                onClick={() => setProvider("saborcasero")}
-                testid="pick-saborcasero"
+                label="Sabrositos"
+                available={!!menus.sabrositos}
+                onClick={() => setProvider("sabrositos")}
+                testid="pick-sabrositos"
               />
             </div>
             <p className="text-xs text-center text-neutral-500 pt-2">
@@ -370,22 +353,11 @@ export default function OrderForm() {
                   ) : null}
                 </h3>
 
-                {provider === "saborcasero" ? (
-                  <SaborCaseroDayFields
-                    dayKey={currentDay.day}
-                    breakfastOptions={currentDay.breakfast}
-                    opciones={currentDay.opciones}
-                    choice={choices[currentDay.day]}
-                    onBreakfast={(v) => setChoice(currentDay.day, "breakfast", v)}
-                    onBreakfastExtra={(t) => setBreakfastExtra(currentDay.day, t)}
-                    onOpcion={(plato) => setSaborCaseroOpcion(currentDay.day, plato)}
-                    onGuarnicion={(v) => setChoice(currentDay.day, "side", v)}
-                    onPlatoExtra={(t) => setMainExtra(currentDay.day, t)}
-                    onGuarnicionExtra={(t) => setSideExtra(currentDay.day, t)}
-                  />
-                ) : (
-                  (() => {
-                  const labels = { main: "Plato principal", diet: "Dieta", side: "Acompañamiento" };
+                {(() => {
+                  const isMara = provider === "mara";
+                  const labels = isMara
+                    ? { main: "Plato principal", diet: "Dieta", side: "Acompañamiento" }
+                    : { main: "Almuerzo", diet: "Menú Opcional", side: "Acompañamiento" };
                   return (
                     <>
                       <ChoiceGroup
@@ -512,8 +484,7 @@ export default function OrderForm() {
                       ) : null}
                     </>
                   );
-                  })()
-                )}
+                })()}
               </CardContent>
             </Card>
           )}

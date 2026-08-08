@@ -14,11 +14,6 @@ import {
 } from "firebase/firestore";
 import { db } from "./firebase";
 import * as XLSX from "xlsx";
-import * as pdfjsLib from "pdfjs-dist/build/pdf";
-
-if (typeof window !== "undefined") {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-}
 
 /* ---------- constants ---------- */
 export const DAYS = [
@@ -37,33 +32,6 @@ export const DAY_LABEL = {
   viernes: "Viernes",
   sabado: "Sábado",
 };
-
-/* ---------- Sabor Casero: catálogo fijo de desayuno ----------
- * El desayuno de Sabor Casero nunca cambia, así que va fijo en el código
- * (no se sube por PDF). Lunes a viernes comparten el mismo catálogo;
- * el sábado tiene uno distinto.
- */
-export const SABOR_CASERO_DESAYUNO_SEMANA = [
-  "Reviro con 2 huevos fritos, café negro",
-  "Sandwich de verduras con jugo",
-  "Mixto con café con leche",
-  "Pote de frutas",
-  "Omelette con jugo o 2 huevos duros",
-  "Empanada frita con mandioca y jugo",
-  "Torta de naranja con yogurt",
-  "Chipa con cocido negro o con leche",
-];
-
-export const SABOR_CASERO_DESAYUNO_SABADO = [
-  "Sandwich de milanesa de carne o pollo",
-  "Bocadito x 12 unidades + jugo de 140ml",
-  "Pote de frutas",
-  "Omelette con queso y jamón + jugo",
-  "Empanadón + gaseosa",
-  "Pasta frola + yogurt",
-];
-
-const SC_DAY_ORDER = ["lunes", "martes", "miercoles", "jueves", "viernes"];
 
 /* ---------- helpers ---------- */
 const sanitize = (s) =>
@@ -84,8 +52,8 @@ export async function listMenus(provider) {
 }
 
 export async function getActiveMenus() {
-  const result = { mara: null, saborcasero: null };
-  for (const p of ["mara", "saborcasero"]) {
+  const result = { mara: null, sabrositos: null };
+  for (const p of ["mara", "sabrositos"]) {
     const list = await listMenus(p);
     result[p] = list[0] || null;
   }
@@ -282,292 +250,143 @@ export function parseMaraExcel(arrayBuffer) {
   return { provider: "mara", week_start, week_end, days };
 }
 
-/* ---------- Sabor Casero: parser de PDF de almuerzo (client-side) ----------
- * El PDF tiene siempre el mismo formato de tabla: 5 columnas (Lunes a
- * Viernes) y, para cada día, 3 bloques "Primera/Segunda/Tercera Opción"
- * (el primero sin rótulo explícito), cada uno con su plato fuerte y su(s)
- * fila(s) de "GUARNICION" (una o varias, cada una elegible por separado).
- *
- * Estrategia: en vez de depender solo del texto (las celdas se cortan en
- * varias líneas físicas de forma distinta por columna), usamos también los
- * rectángulos vectoriales del PDF (líneas/fondos de la tabla) para
- * reconstruir los límites reales de fila y columna, igual que haría una
- * librería de extracción de tablas. Así cada celda —aunque su texto haya
- * quedado partido en 2 o 3 líneas— se recompone completa.
+/** Parse Sabrositos WhatsApp text.
+ * Detects 4 sections:
+ *   - Desayuno (global Mon-Fri) -> breakfast
+ *   - Almuerzo: (per day, Mon-Fri) -> main
+ *   - Acompañamientos: (global Mon-Fri) -> sides
+ *   - Menú Opcional: (global Mon-Fri) -> diet
+ * Saturday items ("Opciones:" or plain lines after Sábado header) go to main.
  */
-function scNormText(s) {
-  return (s || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "");
-}
+export function parseSabrositosText(text) {
+  if (!text) return { provider: "sabrositos", week_start: null, week_end: null, days: DAYS.map(emptyDay) };
 
-function scClusterValues(vals, tol) {
-  const sorted = [...vals].sort((a, b) => a - b);
-  const out = [];
-  for (const v of sorted) {
-    if (out.length && Math.abs(out[out.length - 1] - v) < tol) continue;
-    out.push(v);
-  }
-  return out;
-}
+  // Normalize: put section markers on their own line so they can be
+  // detected even when the original text runs them together.
+  let normalized = text
+    .replace(/\bAcompa[nñ]amientos\s*:?/gi, "\nAcompañamientos:\n")
+    .replace(/\bMen[uú]\s*Opcional\s*:?/gi, "\nMenú Opcional:\n")
+    .replace(/\bAlmuerzo\s*:?/gi, "\nAlmuerzo:\n")
+    .replace(/\bOpciones\s*:?/gi, "\nOpciones:\n")
+    .replace(/\bDesayuno\s*:?/gi, "\nDesayuno\n");
 
-/** Parsea el PDF de almuerzo de Sabor Casero (ArrayBuffer) y devuelve
- * { provider: "saborcasero", week_start: null, week_end: null, days }
- * con `days[].opciones` = [{ titulo, plato, guarnicion: [] }] (3 por día,
- * lunes a viernes). El sábado no tiene almuerzo (solo desayuno fijo).
- */
-export async function parseSaborCaseroPdf(arrayBuffer) {
-  const data =
-    arrayBuffer instanceof Uint8Array ? arrayBuffer : new Uint8Array(arrayBuffer);
-  const doc = await pdfjsLib.getDocument({ data }).promise;
-  const page = await doc.getPage(1);
-  const viewport = page.getViewport({ scale: 1 });
-  const pageHeight = viewport.height;
+  const lines = normalized.split("\n").map((l) => l.trim()).filter(Boolean);
 
-  const opList = await page.getOperatorList();
-  const OPS = pdfjsLib.OPS;
+  const breakfast = [];        // global Mon-Fri
+  const sides = [];            // global Mon-Fri (Acompañamientos)
+  const diet = [];             // global Mon-Fri (Menú Opcional)
+  const mainByDay = {};        // per-day almuerzo
+  const saturdayItems = [];    // sábado items
 
-  // 1. Rectángulos vectoriales -> límites de fila/columna de la tabla.
-  const rects = [];
-  for (let i = 0; i < opList.fnArray.length; i++) {
-    if (opList.fnArray[i] === OPS.constructPath) {
-      const coords = opList.argsArray[i][1];
-      if (coords && coords.length === 4) {
-        const [x, y, w, h] = coords;
-        rects.push({
-          x0: x,
-          top: pageHeight - (y + h),
-          bottom: pageHeight - y,
-          w,
-          h,
-        });
+  let section = null;   // 'breakfast' | 'main' | 'sides' | 'diet' | 'saturday'
+  let currentDay = null;
+
+  const isSectionHeader = (low) => {
+    const l = low.replace(/[:.]/g, "").trim();
+    if (l === "desayuno") return "breakfast";
+    if (l === "almuerzo") return "main";
+    if (l.startsWith("acompa")) return "sides";
+    if (l === "menú opcional" || l === "menu opcional") return "diet";
+    if (l === "opciones") return "sat_options";
+    return null;
+  };
+
+  const isDayHeader = (low) => {
+    const clean = low.replace(/[():*#]/g, "").trim();
+    for (const [kw, key] of Object.entries(DAY_KEYWORDS)) {
+      if (clean === kw || clean.startsWith(kw + " ") || clean.endsWith(" " + kw)) return key;
+    }
+    return null;
+  };
+
+  const cleanItem = (line) => {
+    // Strip leading emojis/bullets/quantities
+    let s = line.replace(/^[^\wáéíóúñÁÉÍÓÚÑ¡¿]+/u, "").trim();
+    // Remove leading list markers like "1.", "-", "•"
+    s = s.replace(/^[-*•]\s*/, "").trim();
+    return s;
+  };
+
+  // Deduplicated push (case-insensitive) — used for global lists that may
+  // receive the same items multiple times (e.g. "Desayuno:" repeated per day).
+  const pushDedup = (arr, item) => {
+    const k = item.toLowerCase().trim();
+    if (!arr.some((x) => x.toLowerCase().trim() === k)) arr.push(item);
+  };
+
+  for (const line of lines) {
+    const low = line.toLowerCase();
+
+    // Day header?
+    const dayKey = isDayHeader(low);
+    if (dayKey) {
+      currentDay = dayKey;
+      if (dayKey === "sabado") {
+        section = "saturday";
+      } else {
+        section = null; // wait for "Almuerzo:" or apply defaults
       }
-    }
-  }
-
-  const rowBoundSet = new Set();
-  rects
-    .filter((r) => r.w > 400)
-    .forEach((r) => {
-      rowBoundSet.add(Math.round(r.top * 10) / 10);
-      rowBoundSet.add(Math.round(r.bottom * 10) / 10);
-    });
-  const rowBounds = scClusterValues([...rowBoundSet], 1);
-
-  const colBoundSet = new Set();
-  rects
-    .filter((r) => r.h > 50)
-    .forEach((r) => colBoundSet.add(Math.round(r.x0 * 10) / 10));
-  const colBounds = scClusterValues([...colBoundSet], 1);
-
-  if (rowBounds.length < 4 || colBounds.length < 6) {
-    throw new Error(
-      "No se pudo detectar la tabla del PDF. Verificá que sea el PDF de almuerzo de Sabor Casero (formato habitual)."
-    );
-  }
-
-  // 2. Palabras del PDF -> celda (fila, columna) según su posición.
-  const tc = await page.getTextContent();
-  const words = tc.items
-    .map((it) => {
-      const x = it.transform[4];
-      const yBottom = it.transform[5];
-      const height = it.height || Math.abs(it.transform[3]) || 8;
-      return { str: it.str, x, top: pageHeight - yBottom - height * 0.85 };
-    })
-    .filter((w) => w.str && w.str.trim());
-
-  const rowOf = (top) => {
-    for (let i = 0; i < rowBounds.length - 1; i++) {
-      if (top >= rowBounds[i] - 1 && top < rowBounds[i + 1] + 1) return i;
-    }
-    return -1;
-  };
-  const colOf = (x) => {
-    for (let i = 0; i < colBounds.length - 1; i++) {
-      if (x >= colBounds[i] - 1 && x < colBounds[i + 1] + 1) return i;
-    }
-    return -1;
-  };
-
-  const grid = {};
-  for (const w of words) {
-    const r = rowOf(w.top);
-    const c = colOf(w.x);
-    if (r < 0 || c < 0) continue;
-    const key = `${r}_${c}`;
-    (grid[key] = grid[key] || []).push(w);
-  }
-
-  const numRows = rowBounds.length - 1;
-  const numCols = colBounds.length - 1;
-  const tableRows = [];
-  for (let r = 0; r < numRows; r++) {
-    const row = [];
-    for (let c = 0; c < numCols; c++) {
-      const arr = (grid[`${r}_${c}`] || []).sort(
-        (a, b) => a.top - b.top || a.x - b.x
-      );
-      row.push(
-        arr
-          .map((x) => x.str)
-          .join(" ")
-          .replace(/\s+/g, " ")
-          .trim()
-      );
-    }
-    tableRows.push(row);
-  }
-
-  // 3. Ubicar la fila de encabezados de día (Lunes..Viernes) y sus columnas.
-  const DAY_NAMES = ["LUNES", "MARTES", "MIERCOLES", "JUEVES", "VIERNES"];
-  let headerRowIdx = -1;
-  let dayCols = [];
-  for (let r = 0; r < tableRows.length && headerRowIdx < 0; r++) {
-    const row = tableRows[r];
-    for (let c = 0; c < row.length; c++) {
-      if (scNormText(row[c]) !== "LUNES") continue;
-      const seq = DAY_NAMES.map((_, i) => scNormText(row[c + i] || ""));
-      if (DAY_NAMES.every((d, i) => seq[i] === d)) {
-        headerRowIdx = r;
-        dayCols = DAY_NAMES.map((_, i) => c + i);
-        break;
-      }
-    }
-  }
-  if (headerRowIdx < 0) {
-    throw new Error(
-      "No se encontró la fila de días (Lunes a Viernes) en el PDF."
-    );
-  }
-
-  // 4. Recorrer filas después del encabezado, armando 3 opciones por día.
-  const dayData = {};
-  SC_DAY_ORDER.forEach((d) => (dayData[d] = []));
-
-  let state = "plato"; // 'plato' | 'guarnicion'
-  let opcionCount = 0;
-  let currentPlato = {};
-  let currentGuarnicion = {};
-
-  const isMarkerRow = (row, marker) =>
-    dayCols.every((c) => scNormText(row[c]) === marker);
-
-  const flushOpcion = () => {
-    opcionCount += 1;
-    const titulo =
-      opcionCount === 1
-        ? "Primera Opción"
-        : opcionCount === 2
-        ? "Segunda Opción"
-        : "Tercera Opción";
-    SC_DAY_ORDER.forEach((d, i) => {
-      const c = dayCols[i];
-      dayData[d].push({
-        titulo,
-        plato: (currentPlato[c] || "").trim(),
-        guarnicion: (currentGuarnicion[c] || []).filter(Boolean),
-      });
-    });
-    currentPlato = {};
-    currentGuarnicion = {};
-  };
-
-  for (let r = headerRowIdx + 1; r < tableRows.length; r++) {
-    const row = tableRows[r];
-    const nonEmpty = dayCols.some((c) => row[c] && row[c].trim());
-    if (!nonEmpty) continue;
-
-    if (isMarkerRow(row, "GUARNICION")) {
-      state = "guarnicion";
       continue;
     }
-    if (isMarkerRow(row, "SEGUNDA OPCION") || isMarkerRow(row, "TERCERA OPCION")) {
-      flushOpcion();
-      state = "plato";
+
+    // Section header?
+    const sec = isSectionHeader(low);
+    if (sec) {
+      if (sec === "sat_options") {
+        section = "saturday";
+        currentDay = "sabado";
+      } else {
+        section = sec;
+      }
       continue;
     }
-    if (/^OBSERVACION/.test(scNormText(row[dayCols[0]]))) break;
 
-    if (state === "plato") {
-      dayCols.forEach((c) => {
-        currentPlato[c] = currentPlato[c] ? `${currentPlato[c]} ${row[c]}`.trim() : row[c];
-      });
-    } else {
-      dayCols.forEach((c) => {
-        if (!currentGuarnicion[c]) currentGuarnicion[c] = [];
-        if (row[c] && row[c].trim()) currentGuarnicion[c].push(row[c].trim());
-      });
+    // Skip annotation lines like "(Disponible todos los días)"
+    if (line.startsWith("(")) continue;
+
+    // Data line — append to appropriate bucket
+    const item = cleanItem(line);
+    if (!item) continue;
+    // Skip generic titles
+    if (/^men[uú]\b/i.test(item) && !/^men[uú]\s*opcional/i.test(item)) continue;
+
+    if (section === "saturday") {
+      saturdayItems.push(item);
+    } else if (section === "breakfast") {
+      pushDedup(breakfast, item);
+    } else if (section === "sides") {
+      pushDedup(sides, item);
+    } else if (section === "diet") {
+      pushDedup(diet, item);
+    } else if (section === "main") {
+      if (!currentDay || currentDay === "sabado") continue;
+      if (!mainByDay[currentDay]) mainByDay[currentDay] = [];
+      mainByDay[currentDay].push(item);
+    } else if (currentDay && currentDay !== "sabado") {
+      // fallback: items right under a day header without "Almuerzo:" prefix
+      if (!mainByDay[currentDay]) mainByDay[currentDay] = [];
+      mainByDay[currentDay].push(item);
     }
-  }
-  flushOpcion(); // tercera opción (no hay marcador de cierre)
-
-  if (opcionCount < 3) {
-    throw new Error(
-      "Se detectaron menos de 3 opciones de almuerzo. Revisá el PDF o completá el menú manualmente."
-    );
   }
 
   const days = DAYS.map((d) => {
     if (d === "sabado") {
       return {
-        day: d,
-        date: null,
-        breakfast: [...SABOR_CASERO_DESAYUNO_SABADO],
-        main: [],
-        diet: [],
-        sides: [],
-        opciones: [],
-      };
-    }
-    const opciones = dayData[d] || [];
-    return {
-      day: d,
-      date: null,
-      breakfast: [...SABOR_CASERO_DESAYUNO_SEMANA],
-      main: opciones.map((o) => o.plato).filter(Boolean),
-      diet: [],
-      sides: opciones.flatMap((o) => o.guarnicion),
-      opciones,
-    };
-  });
-
-  return { provider: "saborcasero", week_start: null, week_end: null, days };
-}
-
-/** Arma el esqueleto (sin PDF) de un menú nuevo de Sabor Casero, con el
- * desayuno fijo ya cargado y 3 opciones vacías por día para completar a mano.
- */
-export function emptySaborCaseroDays() {
-  return DAYS.map((d) => {
-    if (d === "sabado") {
-      return {
-        day: d,
-        date: null,
-        breakfast: [...SABOR_CASERO_DESAYUNO_SABADO],
-        main: [],
-        diet: [],
-        sides: [],
-        opciones: [],
+        ...emptyDay(d),
+        main: saturdayItems,
       };
     }
     return {
       day: d,
       date: null,
-      breakfast: [...SABOR_CASERO_DESAYUNO_SEMANA],
-      main: [],
-      diet: [],
-      sides: [],
-      opciones: [
-        { titulo: "Primera Opción", plato: "", guarnicion: [] },
-        { titulo: "Segunda Opción", plato: "", guarnicion: [] },
-        { titulo: "Tercera Opción", plato: "", guarnicion: [] },
-      ],
+      breakfast: [...breakfast],
+      main: mainByDay[d] || [],
+      diet: [...diet],
+      sides: [...sides],
     };
   });
+
+  return { provider: "sabrositos", week_start: null, week_end: null, days };
 }
 
 /* ---------- Excel export (client-side) ----------

@@ -177,15 +177,15 @@ export default function AdminOrders() {
           <TabsTrigger value="mara" data-testid="orders-tab-mara">
             Mara
           </TabsTrigger>
-          <TabsTrigger value="saborcasero" data-testid="orders-tab-saborcasero">
-            Sabor Casero
+          <TabsTrigger value="sabrositos" data-testid="orders-tab-sabrositos">
+            Sabrositos
           </TabsTrigger>
         </TabsList>
         <TabsContent value="mara" className="mt-4">
           <ProviderOrders provider="mara" />
         </TabsContent>
-        <TabsContent value="saborcasero" className="mt-4">
-          <ProviderOrders provider="saborcasero" />
+        <TabsContent value="sabrositos" className="mt-4">
+          <ProviderOrders provider="sabrositos" />
         </TabsContent>
       </Tabs>
     </div>

@@ -133,7 +133,7 @@ Todos los sábados, un admin entra al panel → **Ver Pedidos** → botón **Res
 ## Estructura de datos en Firestore
 
 - Colección `menus`: un documento por menú semanal cargado.
-  - Campos: `provider` (mara/saborcasero), `week_start`, `week_end`, `days[]` (array con desayuno/main/dieta/sides por día; para Sabor Casero además incluye `opciones[]` con el plato fuerte y su guarnición por día), `created_at`.
+  - Campos: `provider` (mara/sabrositos), `week_start`, `week_end`, `days[]` (array con desayuno/main/dieta/sides por día), `created_at`.
 - Colección `selections`: un documento por pedido de colaborador.
   - ID del doc: `{menuId}__{nombre_sanitizado}` — permite editar el mismo pedido reingresando.
   - Campos: `user_name`, `provider`, `menu_id`, `choices` (objeto con selecciones por día), `created_at`.

@@ -1,23 +1,13 @@
 # Nasser Cubiertas — Sistema de Pedido de Almuerzos
 
-> **Actualización (2026-07):** Sabor Casero reemplazó por completo a Sabrositos
-> como segundo proveedor. Carga por PDF (no WhatsApp): el admin sube el PDF
-> semanal de almuerzo y el sistema detecta automáticamente 3 opciones de plato
-> fuerte por día (lunes a viernes), cada una con su propia guarnición (una o
-> varias alternativas). El desayuno de Sabor Casero es fijo (mismo catálogo
-> todos los días de semana, otro distinto el sábado) y va hardcodeado en
-> `frontend/src/lib/store.js` — nunca se sube por archivo. Ver
-> `frontend/src/lib/store.js` (`parseSaborCaseroPdf`) y
-> `frontend/src/components/SaborCaseroDayFields.jsx`.
-
 ## Problema original
 Empresa Nasser Cubiertas hace pedidos de almuerzo/desayuno de forma manual, con 2 proveedores:
 - **Mara**: envía Excel con menú semanal (Lun-Vie almuerzo + Sábado desayuno).
-- **Sabor Casero**: envía mensaje de WhatsApp con 3 platos por día (Lun-Vie). Sábado es fijo (opciones tipo brunch).
+- **Sabrositos**: envía mensaje de WhatsApp con 3 platos por día (Lun-Vie). Sábado es fijo (opciones tipo brunch).
 
 Se necesita:
 1. Formulario web donde cada colaborador ingresa su nombre y elige sus comidas.
-2. Panel admin para cargar/editar/eliminar menú semanal (subir Excel de Mara o pegar texto de Sabor Casero).
+2. Panel admin para cargar/editar/eliminar menú semanal (subir Excel de Mara o pegar texto de Sabrositos).
 3. Descargar Excel consolidado con todos los pedidos.
 4. Compatible con celular. Reset semanal manual.
 
@@ -26,7 +16,7 @@ Se necesita:
 - **Frontend**: React 19 + React Router + Tailwind + shadcn/ui + sonner (toasts) + axios.
 - **Parsers**:
   - Excel Mara: `openpyxl` — detecta bloques por día en 2 columnas, extrae main/diet/sides + desayuno.
-  - Texto Sabor Casero: regex que reconoce encabezados por día y limpia emojis.
+  - Texto Sabrositos: regex que reconoce encabezados por día y limpia emojis.
 - **Export Excel**: `xlsxwriter` con columnas dinámicas por día/categoría, coloreado rojo.
 
 ## Endpoints principales
@@ -43,15 +33,15 @@ Se necesita:
 - `/` — Formulario "Nombre y Apellido" + botón Admin (esquina superior derecha)
 - `/order` — Selector de proveedor → toggle de días → radios por categoría
 - `/admin/login`
-- `/admin/menus` — Tabs Mara/Sabor Casero, editor + import Excel + paste texto
-- `/admin/orders` — Tabs Mara/Sabor Casero, tabla de pedidos + descargar + reset
+- `/admin/menus` — Tabs Mara/Sabrositos, editor + import Excel + paste texto
+- `/admin/orders` — Tabs Mara/Sabrositos, tabla de pedidos + descargar + reset
 
 ## Implementado (2026-02)
 - Homepage con validación de nombre y apellido.
 - Login admin (recepcion / rec73491654).
 - Sidebar admin con 2 opciones.
-- Editor de menú por día con Desayuno / Principal / Dieta / Acompañamiento (Mara) y solo Principal (Sabor Casero por defecto — editable).
-- Importación Excel Mara y parseo texto Sabor Casero.
+- Editor de menú por día con Desayuno / Principal / Dieta / Acompañamiento (Mara) y solo Principal (Sabrositos por defecto — editable).
+- Importación Excel Mara y parseo texto Sabrositos.
 - Selecciones por colaborador con upsert por nombre (permite editar).
 - Vista de pedidos + descarga Excel consolidado con `xlsxwriter`.
 - Reset semanal.
