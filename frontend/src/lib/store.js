@@ -276,6 +276,10 @@ export function parseSabrositosText(text) {
   // detected even when the original text runs them together.
   let normalized = text
     .replace(/\bAcompa[nñ]amientos\s*:?/gi, "\nAcompañamientos:\n")
+    // "Ensaladas" solo cuenta como encabezado de sección cuando está sola en
+    // su propia línea (con o sin dos puntos); si aparece dentro de una
+    // descripción de plato ("... con ensalada de poroto") no se toca.
+    .replace(/^[ \t]*Ensaladas?[ \t]*:?[ \t]*$/gim, "\nAcompañamientos:\n")
     .replace(/\bOtras\s*opciones\s*:?/gi, "\nMenú Opcional:\n")
     .replace(/\bMen[uú]\s*Opcional\s*:?/gi, "\nMenú Opcional:\n")
     .replace(/\bGuarnici[oó]n\s*:?/gi, "\nGuarnición:\n")
