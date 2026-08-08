@@ -181,6 +181,13 @@ export default function OrderForm() {
         c.mainExtra = "";
         c.dietExtra = "";
       }
+      // Sabrositos: la guarnición del Menú Opcional es una lista distinta a
+      // la de Acompañamiento del plato normal, así que al cambiar entre
+      // "main" y "diet" reiniciamos la guarnición elegida (ya no aplica).
+      if (provider === "sabrositos" && (field === "main" || field === "diet")) {
+        c.side = "";
+        c.sideExtra = "";
+      }
       if (field === "breakfast" && !value) {
         c.breakfastExtra = "";
       }
@@ -358,6 +365,16 @@ export default function OrderForm() {
                   const labels = isMara
                     ? { main: "Plato principal", diet: "Dieta", side: "Acompañamiento" }
                     : { main: "Almuerzo", diet: "Menú Opcional", side: "Acompañamiento" };
+
+                  // Sabrositos: si el colaborador eligió una opción del Menú
+                  // Opcional, la guarnición pasa a ser la propia de esa
+                  // sección (submenú específico), no la Acompañamiento general.
+                  const dietChosen = !isMara && !!choices[currentDay.day]?.diet;
+                  const sideOptions = dietChosen
+                    ? currentDay.dietSides
+                    : currentDay.sides;
+                  const sideLabel = dietChosen ? "Guarnición" : labels.side;
+
                   return (
                     <>
                       <ChoiceGroup
@@ -447,8 +464,8 @@ export default function OrderForm() {
                         </div>
                       ) : null}
                       <ChoiceGroup
-                        title={labels.side}
-                        options={currentDay.sides}
+                        title={sideLabel}
+                        options={sideOptions}
                         value={(choices[currentDay.day]?.side || "").split(", ").filter(Boolean)}
                         onChange={(v) =>
                           setChoice(

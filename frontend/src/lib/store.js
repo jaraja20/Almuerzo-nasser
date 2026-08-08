@@ -152,7 +152,15 @@ function isDayHeader(v) {
 }
 
 function emptyDay(day) {
-  return { day, date: null, breakfast: [], main: [], diet: [], sides: [] };
+  return {
+    day,
+    date: null,
+    breakfast: [],
+    main: [],
+    diet: [],
+    sides: [],
+    dietSides: [],
+  };
 }
 
 /** Parse Mara's xlsx as ArrayBuffer */
@@ -251,12 +259,15 @@ export function parseMaraExcel(arrayBuffer) {
 }
 
 /** Parse Sabrositos WhatsApp text.
- * Detects 4 sections:
+ * Detects 5 secciones:
  *   - Desayuno (global Mon-Fri) -> breakfast
  *   - Almuerzo: (per day, Mon-Fri) -> main
  *   - Acompañamientos: (global Mon-Fri) -> sides
- *   - Menú Opcional: (global Mon-Fri) -> diet
- * Saturday items ("Opciones:" or plain lines after Sábado header) go to main.
+ *   - Menú Opcional / Otras opciones: (global Mon-Fri) -> diet
+ *   - Guarnición (anidada dentro de Menú Opcional/Otras opciones) -> dietSides
+ *     (guarnición propia del menú opcional, aparece como submenú cuando el
+ *     colaborador elige alguna de esas opciones)
+ * Saturday items ("Opciones:" o líneas sueltas después de Sábado) van a main.
  */
 export function parseSabrositosText(text) {
   if (!text) return { provider: "sabrositos", week_start: null, week_end: null, days: DAYS.map(emptyDay) };
@@ -265,7 +276,9 @@ export function parseSabrositosText(text) {
   // detected even when the original text runs them together.
   let normalized = text
     .replace(/\bAcompa[nñ]amientos\s*:?/gi, "\nAcompañamientos:\n")
+    .replace(/\bOtras\s*opciones\s*:?/gi, "\nMenú Opcional:\n")
     .replace(/\bMen[uú]\s*Opcional\s*:?/gi, "\nMenú Opcional:\n")
+    .replace(/\bGuarnici[oó]n\s*:?/gi, "\nGuarnición:\n")
     .replace(/\bAlmuerzo\s*:?/gi, "\nAlmuerzo:\n")
     .replace(/\bOpciones\s*:?/gi, "\nOpciones:\n")
     .replace(/\bDesayuno\s*:?/gi, "\nDesayuno\n");
@@ -275,10 +288,11 @@ export function parseSabrositosText(text) {
   const breakfast = [];        // global Mon-Fri
   const sides = [];            // global Mon-Fri (Acompañamientos)
   const diet = [];             // global Mon-Fri (Menú Opcional)
+  const dietSides = [];        // global Mon-Fri (Guarnición del Menú Opcional)
   const mainByDay = {};        // per-day almuerzo
   const saturdayItems = [];    // sábado items
 
-  let section = null;   // 'breakfast' | 'main' | 'sides' | 'diet' | 'saturday'
+  let section = null;   // 'breakfast' | 'main' | 'sides' | 'diet' | 'dietSides' | 'saturday'
   let currentDay = null;
 
   const isSectionHeader = (low) => {
@@ -287,6 +301,7 @@ export function parseSabrositosText(text) {
     if (l === "almuerzo") return "main";
     if (l.startsWith("acompa")) return "sides";
     if (l === "menú opcional" || l === "menu opcional") return "diet";
+    if (l === "guarnición" || l === "guarnicion") return "dietSides";
     if (l === "opciones") return "sat_options";
     return null;
   };
@@ -358,6 +373,8 @@ export function parseSabrositosText(text) {
       pushDedup(sides, item);
     } else if (section === "diet") {
       pushDedup(diet, item);
+    } else if (section === "dietSides") {
+      pushDedup(dietSides, item);
     } else if (section === "main") {
       if (!currentDay || currentDay === "sabado") continue;
       if (!mainByDay[currentDay]) mainByDay[currentDay] = [];
@@ -383,6 +400,7 @@ export function parseSabrositosText(text) {
       main: mainByDay[d] || [],
       diet: [...diet],
       sides: [...sides],
+      dietSides: [...dietSides],
     };
   });
 
@@ -415,9 +433,13 @@ function dayHasCategory(dayData, catKey) {
   const mn = (dayData.main || []).length;
   const dt = (dayData.diet || []).length;
   const sd = (dayData.sides || []).length;
+  const dtSd = (dayData.dietSides || []).length;
   if (catKey === "breakfast") return bf > 0;
   if (catKey === "main") return mn > 0 || dt > 0;
-  if (catKey === "side") return sd > 0;
+  // "Acompañamiento" también debe aparecer si el día solo tiene guarnición
+  // propia del Menú Opcional (dietSides) aunque no haya Acompañamientos
+  // generales cargados.
+  if (catKey === "side") return sd > 0 || dtSd > 0;
   return false;
 }
 

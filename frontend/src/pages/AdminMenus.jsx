@@ -34,6 +34,7 @@ const emptyDay = (day) => ({
   main: [],
   diet: [],
   sides: [],
+  dietSides: [],
 });
 const emptyMenu = (provider) => ({
   id: null,
@@ -138,6 +139,7 @@ function MenuEditor({ provider }) {
         main: (d.main || []).filter((x) => x && x.trim()),
         diet: (d.diet || []).filter((x) => x && x.trim()),
         sides: (d.sides || []).filter((x) => x && x.trim()),
+        dietSides: (d.dietSides || []).filter((x) => x && x.trim()),
       }));
       const payload = {
         provider: menu.provider,
@@ -217,7 +219,8 @@ function MenuEditor({ provider }) {
             (p.breakfast?.length || 0) +
             (p.main?.length || 0) +
             (p.diet?.length || 0) +
-            (p.sides?.length || 0);
+            (p.sides?.length || 0) +
+            (p.dietSides?.length || 0);
           if (totalItems === 0) return existing;
           return {
             ...existing,
@@ -225,6 +228,7 @@ function MenuEditor({ provider }) {
             main: p.main?.length ? p.main : existing.main,
             diet: p.diet?.length ? p.diet : existing.diet,
             sides: p.sides?.length ? p.sides : existing.sides,
+            dietSides: p.dietSides?.length ? p.dietSides : existing.dietSides,
           };
         }),
       }));
@@ -376,6 +380,14 @@ function MenuEditor({ provider }) {
                     label={catLabels.diet}
                     testid={`${provider}-${d.day}-diet`}
                   />
+                  {!isMara && (
+                    <ItemList
+                      items={d.dietSides}
+                      onChange={(v) => updateDay(d.day, "dietSides", v)}
+                      label="Guarnición (Menú Opcional)"
+                      testid={`${provider}-${d.day}-dietsides`}
+                    />
+                  )}
                   <ItemList
                     items={d.sides}
                     onChange={(v) => updateDay(d.day, "sides", v)}
