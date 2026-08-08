@@ -269,6 +269,34 @@ export function parseMaraExcel(arrayBuffer) {
  *     colaborador elige alguna de esas opciones)
  * Saturday items ("Opciones:" o líneas sueltas después de Sábado) van a main.
  */
+// Guarnición conocida del Menú Opcional. Se usa como respaldo cuando el
+// mensaje de WhatsApp NO trae una línea "Guarnición" explícita separando los
+// platos fuertes de sus acompañamientos (a veces vienen todos juntos bajo
+// "Menú Opcional:"). Si el texto sí trae "Guarnición" como encabezado propio,
+// esa lista manda y esta no se usa.
+const KNOWN_DIET_SIDE_KEYWORDS = [
+  "arroz",
+  "feijao",
+  "feijão",
+  "spaghetti al ajo",
+  "espagueti al ajo",
+  "papas fritas",
+  "pure de papas",
+  "puré de papas",
+  "mandioca",
+  "pan",
+  "mix de verduras",
+  "fideos",
+];
+
+function normalizeForMatch(s) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .trim();
+}
+
 export function parseSabrositosText(text) {
   if (!text) return { provider: "sabrositos", week_start: null, week_end: null, days: DAYS.map(emptyDay) };
 
@@ -298,6 +326,7 @@ export function parseSabrositosText(text) {
 
   let section = null;   // 'breakfast' | 'main' | 'sides' | 'diet' | 'dietSides' | 'saturday'
   let currentDay = null;
+  let sawExplicitDietSides = false; // ¿el texto trajo una línea "Guarnición" propia?
 
   const isSectionHeader = (low) => {
     const l = low.replace(/[:.]/g, "").trim();
@@ -333,6 +362,19 @@ export function parseSabrositosText(text) {
     if (!arr.some((x) => x.toLowerCase().trim() === k)) arr.push(item);
   };
 
+  // La guarnición del Menú Opcional a veces viene con varios ítems juntos en
+  // una sola línea separados por comas (ej: "Arroz , feijao, espagueti al
+  // ajo"). Ahí sí hay que partirlos en opciones individuales — a diferencia
+  // de un plato principal, donde una coma suele ser parte del nombre del
+  // plato (ej: "Feijao, arroz y pollo frito") y no debe partirse.
+  const pushDedupSplitComma = (arr, item) => {
+    item
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .forEach((part) => pushDedup(arr, part));
+  };
+
   for (const line of lines) {
     const low = line.toLowerCase();
 
@@ -356,6 +398,7 @@ export function parseSabrositosText(text) {
         currentDay = "sabado";
       } else {
         section = sec;
+        if (sec === "dietSides") sawExplicitDietSides = true;
       }
       continue;
     }
@@ -366,8 +409,10 @@ export function parseSabrositosText(text) {
     // Data line — append to appropriate bucket
     const item = cleanItem(line);
     if (!item) continue;
-    // Skip generic titles
-    if (/^men[uú]\b/i.test(item) && !/^men[uú]\s*opcional/i.test(item)) continue;
+    // Skip generic titles like "Menú de la semana" / "Menu Sabrositos"
+    // (nótese: no usamos \b después de la "ú" porque en JS \w es solo ASCII
+    // y trata la tilde como "no palabra", rompiendo el límite justo ahí).
+    if (/^men[uú](\s|$)/i.test(item) && !/^men[uú]\s*opcional/i.test(item)) continue;
 
     if (section === "saturday") {
       saturdayItems.push(item);
@@ -378,7 +423,7 @@ export function parseSabrositosText(text) {
     } else if (section === "diet") {
       pushDedup(diet, item);
     } else if (section === "dietSides") {
-      pushDedup(dietSides, item);
+      pushDedupSplitComma(dietSides, item);
     } else if (section === "main") {
       if (!currentDay || currentDay === "sabado") continue;
       if (!mainByDay[currentDay]) mainByDay[currentDay] = [];
@@ -387,6 +432,23 @@ export function parseSabrositosText(text) {
       // fallback: items right under a day header without "Almuerzo:" prefix
       if (!mainByDay[currentDay]) mainByDay[currentDay] = [];
       mainByDay[currentDay].push(item);
+    }
+  }
+
+  // Si el texto no traía una línea "Guarnición" propia dentro de Menú
+  // Opcional, separamos igual los platos de sus acompañamientos usando el
+  // vocabulario conocido de guarnición (ver KNOWN_DIET_SIDE_KEYWORDS).
+  let finalDiet = diet;
+  let finalDietSides = dietSides;
+  if (!sawExplicitDietSides && diet.length) {
+    finalDiet = [];
+    finalDietSides = [...dietSides];
+    for (const it of diet) {
+      if (KNOWN_DIET_SIDE_KEYWORDS.includes(normalizeForMatch(it))) {
+        finalDietSides.push(it);
+      } else {
+        finalDiet.push(it);
+      }
     }
   }
 
@@ -402,9 +464,9 @@ export function parseSabrositosText(text) {
       date: null,
       breakfast: [...breakfast],
       main: mainByDay[d] || [],
-      diet: [...diet],
+      diet: [...finalDiet],
       sides: [...sides],
-      dietSides: [...dietSides],
+      dietSides: [...finalDietSides],
     };
   });
 
@@ -430,6 +492,7 @@ const EXCEL_CATS = [
   { key: "breakfast", label: "Desayuno", choiceField: "breakfast" },
   { key: "main", label: "Principal", choiceField: "main", altField: "diet" },
   { key: "side", label: "Acompañamiento", choiceField: "side" },
+  { key: "dietSide", label: "Guarnición Menú Opcional", choiceField: "dietSide" },
 ];
 
 function dayHasCategory(dayData, catKey) {
@@ -440,10 +503,8 @@ function dayHasCategory(dayData, catKey) {
   const dtSd = (dayData.dietSides || []).length;
   if (catKey === "breakfast") return bf > 0;
   if (catKey === "main") return mn > 0 || dt > 0;
-  // "Acompañamiento" también debe aparecer si el día solo tiene guarnición
-  // propia del Menú Opcional (dietSides) aunque no haya Acompañamientos
-  // generales cargados.
-  if (catKey === "side") return sd > 0 || dtSd > 0;
+  if (catKey === "side") return sd > 0;
+  if (catKey === "dietSide") return dtSd > 0;
   return false;
 }
 
@@ -522,6 +583,13 @@ export function exportSelectionsToExcel({ provider, menu, selections }) {
           const sideChoice = (c.side || "").trim();
           const sideExtra = (c.sideExtra || "").trim();
           val = sideChoice && sideExtra ? `${sideChoice} (${sideExtra})` : sideChoice;
+        } else if (cat.key === "dietSide") {
+          const dietSideChoice = (c.dietSide || "").trim();
+          const dietSideExtra = (c.dietSideExtra || "").trim();
+          val =
+            dietSideChoice && dietSideExtra
+              ? `${dietSideChoice} (${dietSideExtra})`
+              : dietSideChoice;
         }
         row.push(val);
       }

@@ -181,12 +181,17 @@ export default function OrderForm() {
         c.mainExtra = "";
         c.dietExtra = "";
       }
-      // Sabrositos: la guarnición del Menú Opcional es una lista distinta a
-      // la de Acompañamiento del plato normal, así que al cambiar entre
-      // "main" y "diet" reiniciamos la guarnición elegida (ya no aplica).
-      if (provider === "sabrositos" && (field === "main" || field === "diet")) {
-        c.side = "";
-        c.sideExtra = "";
+      // Sabrositos: la guarnición del Menú Opcional (dietSide) solo aplica
+      // mientras haya una opción de "diet" elegida; si se cambia a "main" o
+      // se quita la selección de "diet", se reinicia (el Acompañamiento
+      // general -- "side" -- no se toca, es independiente).
+      if (field === "main" && value) {
+        c.dietSide = "";
+        c.dietSideExtra = "";
+      }
+      if (field === "diet" && !value) {
+        c.dietSide = "";
+        c.dietSideExtra = "";
       }
       if (field === "breakfast" && !value) {
         c.breakfastExtra = "";
@@ -197,6 +202,13 @@ export default function OrderForm() {
           c.sideExtra = "";
         }
         c.side = Array.isArray(value) ? value.join(", ") : value;
+      }
+      if (field === "dietSide") {
+        const selected = Array.isArray(value) ? value : String(value).split(", ").filter(Boolean);
+        if (!selected.length) {
+          c.dietSideExtra = "";
+        }
+        c.dietSide = Array.isArray(value) ? value.join(", ") : value;
       }
       return { ...prev, [dayKey]: c };
     });
@@ -227,6 +239,13 @@ export default function OrderForm() {
     setChoices((prev) => ({
       ...prev,
       [dayKey]: { ...(prev[dayKey] || {}), sideExtra: text },
+    }));
+  };
+
+  const setDietSideExtra = (dayKey, text) => {
+    setChoices((prev) => ({
+      ...prev,
+      [dayKey]: { ...(prev[dayKey] || {}), dietSideExtra: text },
     }));
   };
 
@@ -367,13 +386,10 @@ export default function OrderForm() {
                     : { main: "Almuerzo", diet: "Menú Opcional", side: "Acompañamiento" };
 
                   // Sabrositos: si el colaborador eligió una opción del Menú
-                  // Opcional, la guarnición pasa a ser la propia de esa
-                  // sección (submenú específico), no la Acompañamiento general.
+                  // Opcional, además del Acompañamiento general aparece un
+                  // submenú propio de guarnición para esa opción (se suma,
+                  // no reemplaza nada).
                   const dietChosen = !isMara && !!choices[currentDay.day]?.diet;
-                  const sideOptions = dietChosen
-                    ? currentDay.dietSides
-                    : currentDay.sides;
-                  const sideLabel = dietChosen ? "Guarnición" : labels.side;
 
                   return (
                     <>
@@ -464,8 +480,8 @@ export default function OrderForm() {
                         </div>
                       ) : null}
                       <ChoiceGroup
-                        title={sideLabel}
-                        options={sideOptions}
+                        title={labels.side}
+                        options={currentDay.sides}
                         value={(choices[currentDay.day]?.side || "").split(", ").filter(Boolean)}
                         onChange={(v) =>
                           setChoice(
@@ -499,6 +515,51 @@ export default function OrderForm() {
                           />
                         </div>
                       ) : null}
+
+                      {/* Sabrositos: guarnición propia del Menú Opcional —
+                          aparece además del Acompañamiento de arriba, no en
+                          su lugar, solo cuando eligió una opción del Menú
+                          Opcional. */}
+                      {dietChosen && (
+                        <>
+                          <ChoiceGroup
+                            title="Guarnición"
+                            options={currentDay.dietSides}
+                            value={(choices[currentDay.day]?.dietSide || "").split(", ").filter(Boolean)}
+                            onChange={(v) =>
+                              setChoice(
+                                currentDay.day,
+                                "dietSide",
+                                Array.isArray(v) ? v.join(", ") : v
+                              )
+                            }
+                            name={`dietside-${currentDay.day}`}
+                            testid={`dietside-${currentDay.day}`}
+                            multiple
+                          />
+                          {(choices[currentDay.day]?.dietSide || "").split(", ").filter(Boolean).length ? (
+                            <div className="pl-2 -mt-2">
+                              <label className="text-xs font-semibold text-neutral-600 block mb-1">
+                                Especificá de manera opcional
+                                <span className="text-neutral-400 font-normal">
+                                  {" "}(opcional)
+                                </span>
+                              </label>
+                              <input
+                                type="text"
+                                value={choices[currentDay.day]?.dietSideExtra || ""}
+                                onChange={(e) =>
+                                  setDietSideExtra(currentDay.day, e.target.value)
+                                }
+                                placeholder="Ej: sin picante, con limón"
+                                data-testid={`dietside-extra-${currentDay.day}`}
+                                className="w-full text-sm px-3 py-2 border border-red-300 rounded-md focus:outline-none focus:ring-2 focus:ring-red-400"
+                                maxLength={80}
+                              />
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </>
                   );
                 })()}
