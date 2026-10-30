@@ -211,23 +211,19 @@ export function parseMaraExcel(arrayBuffer) {
     const row = rows[idx] || [];
     // left half
     const leftFlag = row[0];
-    const leftVal = row[1];
     if (typeof leftFlag === "string" && leftFlag.trim().toUpperCase().startsWith("DESAYUNO")) {
       inBreakfast = true;
       continue;
     }
-    const leftDay = isDayHeader(leftVal);
-    if (leftDay) {
-      const blk = scanBlock(idx, 1, leftFlag instanceof Date ? leftFlag : null);
-      dayBlocks[leftDay] = { ...(dayBlocks[leftDay] || {}), ...blk };
-    }
-    // right half
-    const rightFlag = row[8];
-    const rightVal = row[9];
-    const rightDay = isDayHeader(rightVal);
-    if (rightDay) {
-      const blk = scanBlock(idx, 9, rightFlag instanceof Date ? rightFlag : null);
-      dayBlocks[rightDay] = { ...(dayBlocks[rightDay] || {}), ...blk };
+    // Encabezados de día en cualquier columna: el bloque derecho no siempre
+    // cae en la misma columna (a veces el Excel de Mara viene corrido una
+    // columna). La columna de la izquierda del día trae la fecha y las marcas.
+    for (let col = 1; col < row.length; col++) {
+      const dayKey = isDayHeader(row[col]);
+      if (!dayKey) continue;
+      const flag = row[col - 1];
+      const blk = scanBlock(idx, col, flag instanceof Date ? flag : null);
+      dayBlocks[dayKey] = { ...(dayBlocks[dayKey] || {}), ...blk };
     }
     // breakfast items in col 0
     if (inBreakfast && idx > 0) {
